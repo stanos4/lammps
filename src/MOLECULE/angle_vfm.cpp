@@ -35,12 +35,15 @@ using namespace MathConst;
 
 /* ---------------------------------------------------------------------- */
 
-AngleVFM::AngleVFM(LAMMPS *lmp) : Angle(lmp) {}
+AngleVFM::AngleVFM(LAMMPS *lmp) : Angle(lmp) {
+	printf("Init AngleVFM");
+}
 
 /* ---------------------------------------------------------------------- */
 
 AngleVFM::~AngleVFM()
 {
+//	printf("VFM destroy\n");
   if (allocated && !copymode) {
     memory->destroy(setflag);
     memory->destroy(theta0);
@@ -54,6 +57,7 @@ AngleVFM::~AngleVFM()
 
 void AngleVFM::compute(int eflag, int vflag)
 {
+//	printf("VFM compute\n");
   int i1,i2,i3,n,type;
   double delx1,dely1,delz1,delx2,dely2,delz2;
   double eangle,f1[3],f3[3];
@@ -69,6 +73,7 @@ void AngleVFM::compute(int eflag, int vflag)
   int nanglelist = neighbor->nanglelist;
   int nlocal = atom->nlocal;
   int newton_bond = force->newton_bond;
+
 
   for (n = 0; n < nanglelist; n++) {
     i1 = anglelist[n][0];
@@ -93,6 +98,9 @@ void AngleVFM::compute(int eflag, int vflag)
     r123 = delx1*delx2 + dely1*dely2 + delz1*delz2;
     dr = r123 - rij0[type] * rik0[type] * c0;
     tk = dr * beta[type] / rij0[type] / rik0[type];
+//    printf("type; i1-i2-i3; rij0; rik0; beta\n");
+//    printf("    %d; %d-%d-%d; %f; %f; %f\n",type,i1,i2,i3,rij0[type],rik0[type],beta[type]);
+    printf("AngleVFM %d-%d-%d: %f; %f; %f\n", i1,i2,i3,rij0[type],rik0[type],theta0[type]);
 
     if (eflag) eangle = dr * tk;
 
@@ -140,6 +148,8 @@ void AngleVFM::compute(int eflag, int vflag)
 
 void AngleVFM::allocate()
 {
+	printf("allocating coefficients\n");
+
   allocated = 1;
   int n = atom->nangletypes;
 
@@ -149,6 +159,7 @@ void AngleVFM::allocate()
   memory->create(beta,n+1,"angle:beta");
   memory->create(setflag,n+1,"angle:setflag");
   for (int i = 1; i <= n; i++) setflag[i] = 0;
+//	printf("VFM allocate finished\n");
 }
 
 /* ----------------------------------------------------------------------
@@ -157,21 +168,24 @@ void AngleVFM::allocate()
 
 void AngleVFM::coeff(int narg, char **arg)
 {
+	printf("reading coefficients\n");
   if (narg != 5) error->all(FLERR,"Incorrect args for angle coefficients");
   if (!allocated) allocate();
 
   int ilo,ihi;
   force->bounds(FLERR,arg[0],atom->nangletypes,ilo,ihi);
 
-  double theta0_one = force->numeric(FLERR,arg[2]);
-  double rij0_one = force->numeric(FLERR,arg[3]);
-  double rik0_one = force->numeric(FLERR,arg[4]);
-  double beta_one = force->numeric(FLERR,arg[5]);
+  double theta0_one = force->numeric(FLERR,arg[1]);
+  double rij0_one = force->numeric(FLERR,arg[2]);
+  double rik0_one = force->numeric(FLERR,arg[3]);
+  double beta_one = force->numeric(FLERR,arg[4]);
 
   // convert theta0 from degrees to radians
 
+  printf("theta; rij; rik; beta: %f  %f  %f  %f\n",theta0_one, rij0_one, rik0_one, beta_one);
   int count = 0;
   for (int i = ilo; i <= ihi; i++) {
+    printf("    i: %d\n",i);
     theta0[i] = theta0_one/180.0 * MY_PI;
     rij0[i] = rij0_one;
     rik0[i] = rik0_one;
@@ -187,6 +201,7 @@ void AngleVFM::coeff(int narg, char **arg)
 
 double AngleVFM::equilibrium_angle(int i)
 {
+	printf("VFM equilibrium_angle\n");
   return theta0[i];
 }
 
@@ -194,13 +209,14 @@ double AngleVFM::equilibrium_angle(int i)
    proc 0 writes out coeffs to restart file
 ------------------------------------------------------------------------- */
 
-//void AngleCharmm::write_restart(FILE *fp)
-//{
-//  fwrite(&k[1],sizeof(double),atom->nangletypes,fp);
-//  fwrite(&theta0[1],sizeof(double),atom->nangletypes,fp);
-//  fwrite(&k_ub[1],sizeof(double),atom->nangletypes,fp);
-//  fwrite(&r_ub[1],sizeof(double),atom->nangletypes,fp);
-//}
+void AngleVFM::write_restart(FILE *fp)
+{
+	printf("VFM write_restart\n");
+  fwrite(&theta0[1],sizeof(double),atom->nangletypes,fp);
+  fwrite(&rij0[1],sizeof(double),atom->nangletypes,fp);
+  fwrite(&rik0[1],sizeof(double),atom->nangletypes,fp);
+  fwrite(&beta[1],sizeof(double),atom->nangletypes,fp);
+}
 
 /* ----------------------------------------------------------------------
    proc 0 reads coeffs from restart file, bcasts them
@@ -208,13 +224,15 @@ double AngleVFM::equilibrium_angle(int i)
 
 void AngleVFM::read_restart(FILE *fp)
 {
+	printf("reading restart\n");
+
   allocate();
 
   if (comm->me == 0) {
-    utils::sfread(FLERR,&theta0[1],sizeof(double),atom->nangletypes,fp,NULL,error);
-    utils::sfread(FLERR,&rij0[1],sizeof(double),atom->nangletypes,fp,NULL,error);
-    utils::sfread(FLERR,&rik0[1],sizeof(double),atom->nangletypes,fp,NULL,error);
-    utils::sfread(FLERR,&beta[1],sizeof(double),atom->nangletypes,fp,NULL,error);
+    fread(&theta0[1],sizeof(double),atom->nangletypes,fp);
+    fread(&rij0[1],sizeof(double),atom->nangletypes,fp);
+    fread(&rik0[1],sizeof(double),atom->nangletypes,fp);
+    fread(&beta[1],sizeof(double),atom->nangletypes,fp);
   }
   MPI_Bcast(&theta0[1],atom->nangletypes,MPI_DOUBLE,0,world);
   MPI_Bcast(&rij0[1],atom->nangletypes,MPI_DOUBLE,0,world);
@@ -230,6 +248,8 @@ void AngleVFM::read_restart(FILE *fp)
 
 void AngleVFM::write_data(FILE *fp)
 {
+	printf("VFM write_data\n");
+
   for (int i = 1; i <= atom->nangletypes; i++)
     fprintf(fp,"%d %g %g %g %g\n",
             i,theta0[i]/MY_PI*180.0,rij0[i],rik0[i],beta[i]);
@@ -239,6 +259,8 @@ void AngleVFM::write_data(FILE *fp)
 
 double AngleVFM::single(int type, int i1, int i2, int i3)
 {
+	printf("VFM single\n");
+
   double **x = atom->x;
 
   double delx1 = x[i1][0] - x[i2][0];
