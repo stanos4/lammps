@@ -40,14 +40,9 @@ class PairRepCubic : public Pair {
   double single(int, int, int, int, double, double, double, double &);
 
  protected:
-  double **cut_inner,**cut_inner_sq; //cut,
-  double **epsilon,**sigma;
-  double **lj1,**lj2,**lj3,**lj4;
-
-  // these are that I need
   double **cut, ***gamma_fc;
 
-  void allocate();
+  virtual void allocate();
 };
 
 namespace PairRepCubicConstants {
